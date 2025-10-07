@@ -1,0 +1,24 @@
+# Jupyter overlay for CPU image
+FROM ghcr.io/spinsimulation/simos:cuda
+
+USER root
+# tini = clean signal handling; recommended for Jupyter
+RUN pip install --no-cache-dir jupyterlab ipywidgets jupyterlab_widgets \
+    && apt-get update && apt-get install -y --no-install-recommends tini \
+    && rm -rf /var/lib/apt/lists/*
+
+# Optional: a default Jupyter config that binds on 0.0.0.0 and disables token only if PASSWORD is set
+# We'll start via a small entry script.
+COPY scripts/start.sh /usr/local/bin/start.sh
+RUN chmod +x /usr/local/bin/start.sh
+RUN sed -i "s/\r$//" /usr/local/bin/start.sh && chmod +x /usr/local/bin/start.sh
+
+#Fetch example notebooks from GitHub and place them in examples folder
+RUN apt-get update && apt-get install -y git \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /workspace/examples \
+    && git clone https://github.com/spinsimulation/simos_examples.git /workspace/examples
+
+EXPOSE 8888
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["/usr/local/bin/start.sh"]

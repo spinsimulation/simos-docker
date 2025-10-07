@@ -1,0 +1,39 @@
+FROM python:3.12-slim
+
+ARG UID=1000
+ARG GID=1000
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+# System deps that are commonly needed at runtime 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates curl libstdc++6 \
+      tk tcl fonts-dejavu \
+      build-essential gfortran pkg-config \
+      libopenblas-dev liblapack-dev libfftw3-dev libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Use a dedicated venv to keep image tidy
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Pre-copy constraints for better layer caching
+WORKDIR /opt/app
+COPY context/requirements.txt ./
+
+# Install deps (NumPy/SciPy wheels include OpenBLAS)
+RUN pip install --upgrade pip \
+ && pip install -r requirements.txt
+
+# Create non-root user
+RUN groupadd -g ${GID} app && useradd -m -u ${UID} -g ${GID} app
+USER app
+
+# Default workdir for users
+WORKDIR /workspace
+
+# If your sim exposes a CLI entry point, set it here:
+# ENTRYPOINT ["your-sim-cli"]
+CMD ["python", "-c", "import simos as sos; print('CPU image OK')"]

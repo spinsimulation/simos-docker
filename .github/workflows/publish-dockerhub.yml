@@ -1,0 +1,135 @@
+name: Publish to Docker Hub (on Release)
+
+on:
+  release:
+    types: [ published ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DH: docker.io
+  IMAGE_BASENAME: simos
+  DH_NAMESPACE: secrets.DOCKERHUB_USERNAME
+
+jobs:
+  base:
+    name: Publish base (${{ matrix.flavor }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - flavor: cpu
+            dockerfile: dockerfiles/Dockerfile.cpu
+            platforms: linux/amd64
+          - flavor: mkl
+            dockerfile: dockerfiles/Dockerfile.mkl
+            platforms: linux/amd64
+          - flavor: cuda
+            dockerfile: dockerfiles/Dockerfile.cuda
+            platforms: linux/amd64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.DH }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Compute image name
+        id: naming
+        run: |
+          echo "image=${{ env.DH }}/${{ env.DH_NAMESPACE }}/${{ env.IMAGE_BASENAME }}" >> "$GITHUB_OUTPUT"
+          echo "rel=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"  # e.g., v1.2.3
+
+      - name: Docker metadata (Docker Hub)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.naming.outputs.image }}
+          tags: |
+            type=raw,value=${{ steps.naming.outputs.rel }}-${{ matrix.flavor }}
+            type=raw,value=${{ matrix.flavor }}
+          labels: |
+            org.opencontainers.image.title=SimOS (${{ matrix.flavor }})
+            org.opencontainers.image.description=SimOS ${{ matrix.flavor }} base image (release)
+
+      - name: Build & Push (${{ matrix.flavor }})
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          platforms: ${{ matrix.platforms }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  jupyter:
+    name: Publish jupyter (${{ matrix.flavor }})
+    runs-on: ubuntu-latest
+    needs: [ base ]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - flavor: cpu
+            dockerfile: dockerfiles/Dockerfile.cpu-jupyter
+            platforms: linux/amd64
+            base_tag: cpu
+          - flavor: mkl
+            dockerfile: dockerfiles/Dockerfile.mkl-jupyter
+            platforms: linux/amd64
+            base_tag: mkl
+          - flavor: cuda
+            dockerfile: dockerfiles/Dockerfile.cuda-jupyter
+            platforms: linux/amd64
+            base_tag: cuda
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.DH }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Compute image name
+        id: naming
+        run: |
+          echo "image=${{ env.DH }}/${{ env.DH_NAMESPACE }}/${{ env.IMAGE_BASENAME }}" >> "$GITHUB_OUTPUT"
+          echo "rel=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Docker metadata (Docker Hub)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.naming.outputs.image }}
+          tags: |
+            type=raw,value=${{ steps.naming.outputs.rel }}-${{ matrix.flavor }}-jupyter
+            type=raw,value=${{ matrix.flavor }}-jupyter
+          labels: |
+            org.opencontainers.image.title=SimOS (${{ matrix.flavor }}-jupyter)
+            org.opencontainers.image.description=SimOS ${{ matrix.flavor }} image with Jupyter (release)
+
+      - name: Build & Push (${{ matrix.flavor }}-jupyter)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          platforms: ${{ matrix.platforms }}
+          # build-args: |
+          #   BASE_IMAGE=${{ steps.naming.outputs.image }}:${{ matrix.base_tag }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -1,0 +1,36 @@
+name: Smoke Tests (GHCR)
+
+on:
+  workflow_run:
+    workflows: [ "Build & Push to GHCR" ]
+    types: [ completed ]
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor: [ cpu, mkl, cuda ]
+    steps:
+      - name: Pull amd64 image from GHCR
+        run: |
+          OWNER=${GITHUB_REPOSITORY_OWNER,,}
+          IMAGE=ghcr.io/${OWNER}/simos:${{ matrix.flavor }}
+          docker pull --platform linux/amd64 "$IMAGE"
+      - name: Python import smoke test
+        run: |
+          OWNER=${GITHUB_REPOSITORY_OWNER,,}
+          IMAGE=ghcr.io/${OWNER}/simos:${{ matrix.flavor }}
+          docker run --rm --platform linux/amd64 "$IMAGE" \
+            python - <<'PY'
+          import sys
+          try:
+              import simos as sos
+              print("OK: simos imported; version:", getattr(sos, "__version__", "unknown"))
+          except Exception as e:
+              print("FAIL: import simos as sos ->", e, file=sys.stderr)
+              sys.exit(1)
+          PY

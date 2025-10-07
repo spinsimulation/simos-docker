@@ -1,0 +1,8 @@
+simos>=0.2.0
+numpy>=2.0
+scipy>=1.13
+qutip>=5.0.0
+sympy>=1.11
+matplotlib
+IPython
+numba>=0.58.0

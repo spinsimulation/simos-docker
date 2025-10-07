@@ -1,0 +1,39 @@
+FROM mambaorg/micromamba:ubuntu24.04
+
+
+ARG MAMBA_DOCKERFILE_ACTIVATE=1
+
+USER root
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      libx11-6 libxext6 libxrender1 libxft2 libxfixes3 libxi6 libxrandr2 \
+      libxkbcommon0 libxkbcommon-x11-0 libxcb1 libx11-xcb1 libsm6 libice6 && \
+    rm -rf /var/lib/apt/lists/*
+USER $MAMBA_USER
+
+
+# Create env with MKL-backed NumPy/SciPy from the defaults channel
+# (defaults uses MKL by default; conda-forge uses OpenBLAS)
+RUN micromamba create -y -n simos python=3.12 \
+      numpy scipy mkl mkl-service numexpr \
+      pip \
+    && micromamba clean -a -y
+
+SHELL ["bash", "-lc"]
+ENV PATH=/opt/conda/envs/simos/bin:$PATH
+
+# Install your package (PyPI or Git ref)
+WORKDIR /opt/app
+COPY context/requirements.txt ./
+RUN pip install --upgrade pip \
+ && pip install -r requirements.txt
+
+# Use default user; set working directory
+WORKDIR /workspace
+
+# Optional: print MKL info on start (handy for users)
+CMD python -c "import numpy, scipy, numexpr, mkl; \
+print('NumPy', numpy.__version__, 'SciPy', scipy.__version__); \
+import numpy as np; print('BLAS linked:', np.__config__.show()); \
+print('numexpr threads:', numexpr.get_vml_version(), numexpr.nthreads()); \
+import simos as sos"
