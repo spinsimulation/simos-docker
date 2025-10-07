@@ -11,7 +11,7 @@ permissions:
 env:
   DH: docker.io
   IMAGE_BASENAME: simos
-  DH_NAMESPACE: secrets.DOCKERHUB_USERNAME
+  DH_NAMESPACE: ${{ secrets.DOCKERHUB_USERNAME }}  # Docker Hub namespace (user or org)
 
 jobs:
   base:
