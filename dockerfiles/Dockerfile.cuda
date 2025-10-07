@@ -16,17 +16,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       tk tcl fonts-dejavu \
   && rm -rf /var/lib/apt/lists/*
 
-# Upgrade pip tooling
-RUN python3 -m pip install --upgrade pip wheel setuptools
+# Use a dedicated virtualenv to avoid PEP 668 issues
+RUN python3 -m venv /opt/build-venv
+ENV PATH="/opt/build-venv/bin:$PATH"
+
+# Upgrade pip tooling inside the venv (safe)
+RUN python -m pip install --upgrade pip setuptools wheel
 
 WORKDIR /opt/app
 COPY context/requirements.txt ./
 COPY context/requirements-gpu.txt ./
 
-# Build wheels for all deps (CPU + CUDA). This compiles parament with nvcc here.
+# Build wheels for all deps (CPU + CUDA). parament will compile with nvcc here.
 RUN mkdir -p /wheelhouse && \
-    pip wheel -r requirements.txt -w /wheelhouse && \
-    pip wheel -r requirements-gpu.txt -w /wheelhouse
+    python -m pip wheel --no-cache-dir -r requirements.txt -w /wheelhouse && \
+    python -m pip wheel --no-cache-dir -r requirements-gpu.txt -w /wheelhouse
 
 # ---------- Runtime stage: smaller, CUDA runtime + cuBLAS ----------
 FROM nvidia/cuda:12.6.0-runtime-ubuntu24.04
@@ -40,7 +44,6 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PIP_NO_CACHE_DIR=1
 
 # Only runtime libs, no compilers
-# (Keep BLAS/LAPACK/FFTW runtimes; drop build tools)
 RUN apt-get update && apt-get install -y --no-install-recommends \
       python3 python3-venv python3-pip \
       ca-certificates curl libstdc++6 \
@@ -48,18 +51,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       tk tcl fonts-dejavu \
   && rm -rf /var/lib/apt/lists/*
 
-# Create a clean venv in runtime and install from prebuilt wheels
+# Runtime venv
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy wheelhouse from build stage and install without hitting the network
+# Copy wheelhouse from build stage and install without touching system Python
 COPY --from=build /wheelhouse /wheelhouse
 COPY --from=build /opt/app/requirements.txt /opt/app/requirements.txt
 COPY --from=build /opt/app/requirements-gpu.txt /opt/app/requirements-gpu.txt
 
-RUN pip install --upgrade pip && \
-    pip install --no-index --find-links=/wheelhouse -r /opt/app/requirements.txt && \
-    pip install --no-index --find-links=/wheelhouse -r /opt/app/requirements-gpu.txt && \
+RUN python -m pip install --upgrade pip && \
+    python -m pip install --no-index --find-links=/wheelhouse -r /opt/app/requirements.txt && \
+    python -m pip install --no-index --find-links=/wheelhouse -r /opt/app/requirements-gpu.txt && \
     rm -rf /wheelhouse
 
 # Non-root user
