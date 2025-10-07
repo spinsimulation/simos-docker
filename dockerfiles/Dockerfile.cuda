@@ -1,4 +1,35 @@
-FROM nvidia/cuda:12.6.0-devel-ubuntu24.04
+# ---------- Build stage: has nvcc + dev toolchain ----------
+FROM nvidia/cuda:12.6.0-devel-ubuntu24.04 AS build
+
+ARG UID=1001
+ARG GID=1001
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PIP_NO_CACHE_DIR=1
+
+# Dev toolchain + headers needed to compile numpy/scipy/parament wheels
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      python3 python3-venv python3-pip python3-dev cython3 \
+      build-essential gfortran pkg-config \
+      libopenblas-dev liblapack-dev libfftw3-dev libgomp1 \
+      ca-certificates curl libstdc++6 \
+      tk tcl fonts-dejavu \
+  && rm -rf /var/lib/apt/lists/*
+
+# Upgrade pip tooling
+RUN python3 -m pip install --upgrade pip wheel setuptools
+
+WORKDIR /opt/app
+COPY context/requirements.txt ./
+COPY context/requirements-gpu.txt ./
+
+# Build wheels for all deps (CPU + CUDA). This compiles parament with nvcc here.
+RUN mkdir -p /wheelhouse && \
+    pip wheel -r requirements.txt -w /wheelhouse && \
+    pip wheel -r requirements-gpu.txt -w /wheelhouse
+
+# ---------- Runtime stage: smaller, CUDA runtime + cuBLAS ----------
+FROM nvidia/cuda:12.6.0-runtime-ubuntu24.04
 
 ARG UID=1001
 ARG GID=1001
@@ -7,34 +38,31 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
-    
-# Basic Python + runtime libs
+
+# Only runtime libs, no compilers
+# (Keep BLAS/LAPACK/FFTW runtimes; drop build tools)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      python3 python3-venv python3-pip ca-certificates curl libstdc++6 \
-      python3-dev cython3 \
-      build-essential gfortran pkg-config \
+      python3 python3-venv python3-pip \
+      ca-certificates curl libstdc++6 \
       libopenblas-dev liblapack-dev libfftw3-dev libgomp1 \
       tk tcl fonts-dejavu \
-    && rm -rf /var/lib/apt/lists/*
+  && rm -rf /var/lib/apt/lists/*
 
+# Create a clean venv in runtime and install from prebuilt wheels
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-WORKDIR /opt/app
-COPY context/requirements.txt ./
-COPY context/requirements-gpu.txt ./
+# Copy wheelhouse from build stage and install without hitting the network
+COPY --from=build /wheelhouse /wheelhouse
+COPY --from=build /opt/app/requirements.txt /opt/app/requirements.txt
+COPY --from=build /opt/app/requirements-gpu.txt /opt/app/requirements-gpu.txt
 
-# Install your sim + NumPy/SciPy (CPU compute by default).
-# If your sim optionally uses Numba/CuPy, you can install conditionals here:
-#   pip install numba
-#   pip install "cupy-cuda12x"    # optional; only if your project uses CuPy
-RUN pip install --upgrade pip \
- && pip install -r requirements.txt
+RUN pip install --upgrade pip && \
+    pip install --no-index --find-links=/wheelhouse -r /opt/app/requirements.txt && \
+    pip install --no-index --find-links=/wheelhouse -r /opt/app/requirements-gpu.txt && \
+    rm -rf /wheelhouse
 
-# Install PARAMENT
-RUN pip install -r requirements-gpu.txt
-
-# Create non-root user
+# Non-root user
 RUN groupadd -g ${GID} app && useradd -m -u ${UID} -g ${GID} app
 USER app
 
