@@ -6,29 +6,28 @@ Install from Docker Hub using (pick variant as needed):
 # Base images
 docker pull kherb27/simos:cpu
 docker pull kherb27/simos:mkl
-docker pull kherb27/simos:cuda
 # Jupyter overlays
 docker pull kherb27/simos:cpu-jupyter
 docker pull kherb27/simos:mkl-jupyter
-docker pull kherb27/simos:cuda-jupyter
 ```
+
+Note: The CUDA images are not available on Docker Hub due to image size constraints. Please use the GitHub Container Registry (GHCR) images instead, or build the CUDA images locally using the provided Dockerfiles. 
+
+Due to resource constraints on the Github Action runners, Docker images are built only for the `linux/amd64` platform. If you need images for other platforms (e.g., `linux/arm64` for Apple Silicon), please build them locally using the provided Dockerfiles.
 
 To run the images, use
 ```bash
 # Base images
 docker run --rm -it kherb27/simos:cpu python
 docker run --rm -it kherb27/simos:mkl python
-docker run --rm -it --gpus all kherb27/simos:cuda python
 # Jupyter overlays
 docker run --rm -it -p 8888:8888 kherb27/simos:cpu-jupyter
 docker run --rm -it -p 8888:8888 kherb27/simos:mkl-jupyter
-docker run --rm -it -p 8888:8888 --gpus all kherb27/simos:cuda-jupyter
 ```
 If you want a persistant workspace, mount a local directory as `/workspace`, e.g.
 ```bash
 docker run --rm -it -p 8888:8888 -v ./persistent:/workspace/persistent kherb27/simos:cpu-jupyter
 docker run --rm -it -p 8888:8888 -v ./persistent:/workspace/persistent kherb27/simos:mkl-jupyter
-docker run --rm -it -p 8888:8888 -v ./persistent:/workspace/persistent --gpus all kherb27/simos:cuda-jupyter
 ```
 
 ## CI/CD (GitHub Actions → GHCR)

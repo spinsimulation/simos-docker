@@ -27,9 +27,10 @@ jobs:
           - flavor: mkl
             dockerfile: dockerfiles/Dockerfile.mkl
             platforms: linux/amd64
-          - flavor: cuda
-            dockerfile: dockerfiles/Dockerfile.cuda
-            platforms: linux/amd64
+          # Temporarily disable cuda build on docker hub
+          # - flavor: cuda
+          #  dockerfile: dockerfiles/Dockerfile.cuda
+          #  platforms: linux/amd64
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3
@@ -87,10 +88,11 @@ jobs:
             dockerfile: dockerfiles/Dockerfile.mkl-jupyter
             platforms: linux/amd64
             base_tag: mkl
-          - flavor: cuda
-            dockerfile: dockerfiles/Dockerfile.cuda-jupyter
-            platforms: linux/amd64
-            base_tag: cuda
+          # Tempoarily disable cuda jupyter build on docker hub
+          #- flavor: cuda
+          #  dockerfile: dockerfiles/Dockerfile.cuda-jupyter
+          #  platforms: linux/amd64
+          #  base_tag: cuda
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3
